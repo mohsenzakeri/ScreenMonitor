@@ -67,6 +67,15 @@ private fun ScreenTrackApp(context: Context, db: ScreenTimeDatabase) {
     ) { uri: Uri? ->
         if (uri != null) scope.launch { exportCsv(context, uri, entries) }
     }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) scope.launch {
+            runCatching { importCsv(context, uri, db) }
+                .onFailure { android.widget.Toast.makeText(context, "Import failed: " + (it.message ?: "Invalid CSV"), android.widget.Toast.LENGTH_LONG).show() }
+                .onSuccess { count -> android.widget.Toast.makeText(context, "Imported " + count + " entries", android.widget.Toast.LENGTH_LONG).show() }
+        }
+    }
 
     MaterialTheme(
         colorScheme = lightColorScheme(
@@ -87,6 +96,9 @@ private fun ScreenTrackApp(context: Context, db: ScreenTimeDatabase) {
                         }
                     },
                     actions = {
+                        IconButton(onClick = { importLauncher.launch(arrayOf("text/*", "application/csv")) }) {
+                            Icon(Icons.Default.Add, contentDescription = "Import CSV")
+                        }
                         IconButton(onClick = { exportLauncher.launch("screentrack-${LocalDate.now()}.csv") }) {
                             Icon(Icons.Default.SaveAlt, contentDescription = "Export CSV")
                         }
