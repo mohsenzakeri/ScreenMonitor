@@ -233,16 +233,96 @@ private fun daysLabel(date: LocalDate) = date.dayOfWeek.name.take(1)
 @Composable
 private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modifier) {
     var month by remember { mutableStateOf(YearMonth.now()) }
-    val thisMonth = entries.filter { runCatching { YearMonth.from(LocalDate.parse(it.date)) == month }.getOrDefault(false) }
-    val daysWithData = thisMonth.size
-    val average = if (daysWithData == 0) 0 else thisMonth.sumOf { it.minutes } / daysWithData
-    val previousMonth = entries.filter { runCatching { YearMonth.from(LocalDate.parse(it.date)) == month.minusMonths(1) }.getOrDefault(false) }
-    val prevAvg = if (previousMonth.isEmpty()) 0 else previousMonth.sumOf { it.minutes } / previousMonth.size
+    var resolution by remember { mutableStateOf("Week") }
+    var weekStart by remember { mutableStateOf(LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))) }
+    val parsed = entries.mapNotNull { e -> runCatching { LocalDate.parse(e.date) to e }.getOrNull() }.sortedBy { it.first }
+    val total = parsed.sumOf { it.second.minutes }
+    val avg = if (parsed.isEmpty()) 0 else total / parsed.size
+    val highest = parsed.maxByOrNull { it.second.minutes }
+    val trend = remember(parsed, resolution) {
+        when (resolution) {
+            "Day" -> parsed.map { Pair(it.first.format(DateTimeFormatter.ofPattern("MMM d")), it.second.minutes) }
+            "Week" -> parsed.groupBy { it.first.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) }.toSortedMap()
+                .map { (d, list) -> Pair(d.format(DateTimeFormatter.ofPattern("MMM d")), list.sumOf { it.second.minutes }) }
+            else -> parsed.groupBy { YearMonth.from(it.first) }.toSortedMap()
+                .map { (m, list) -> Pair(m.format(DateTimeFormatter.ofPattern("MMM yy")), list.sumOf { it.second.minutes }) }
+        }
+    }
+    val monthEntries = parsed.filter { YearMonth.from(it.first) == month }.map { it.second }
+    val prevMonth = parsed.filter { YearMonth.from(it.first) == month.minusMonths(1) }.map { it.second }
+    val monthAvg = if (monthEntries.isEmpty()) 0 else monthEntries.sumOf { it.minutes } / monthEntries.size
+    val prevMonthAvg = if (prevMonth.isEmpty()) 0 else prevMonth.sumOf { it.minutes } / prevMonth.size
+    val weekEnd = weekStart.plusDays(6)
+    val thisWeek = parsed.filter { it.first in weekStart..weekEnd }.map { it.second }
+    val lastWeek = parsed.filter { it.first in weekStart.minusDays(7)..weekStart.minusDays(1) }.map { it.second }
+    val weekAvg = if (thisWeek.isEmpty()) 0 else thisWeek.sumOf { it.minutes } / thisWeek.size
+    val lastWeekAvg = if (lastWeek.isEmpty()) 0 else lastWeek.sumOf { it.minutes } / lastWeek.size
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
+            Text("Analytics", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text("Your screen-time patterns across all recorded dates", color = Color.Gray, fontSize = 13.sp)
+        }
+        item {
+            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Overall trend", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Day", "Week", "Month").forEach { option ->
+                            FilterChip(selected = resolution == option, onClick = { resolution = option }, label = { Text(option) })
+                        }
+                    }
+                    if (trend.isEmpty()) Text("Add entries to see your trend.", color = Color.Gray)
+                    else {
+                        TrendChart(trend)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(trend.first().first, color = Color.Gray, fontSize = 10.sp)
+                            Text(trend.size.toString() + " " + resolution.lowercase() + " periods", color = Color.Gray, fontSize = 10.sp)
+                            Text(trend.last().first, color = Color.Gray, fontSize = 10.sp)
+                        }
+                        Text("All available history is included. Each bar represents total minutes per " + resolution.lowercase() + ".", color = Color.Gray, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+        item {
+            Text("All-time overview", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard("Total screen time", formatDuration(total), Modifier.weight(1f))
+                StatCard("Daily average", formatDuration(avg), Modifier.weight(1f))
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard("Recorded days", parsed.size.toString(), Modifier.weight(1f))
+                StatCard("Highest day", highest?.let { formatDuration(it.second.minutes) } ?: "—", Modifier.weight(1f))
+            }
+            if (parsed.isNotEmpty()) {
+                Text("Recorded from " + parsed.first().first.format(DateTimeFormatter.ofPattern("MMM d, yyyy")) + " to " + parsed.last().first.format(DateTimeFormatter.ofPattern("MMM d, yyyy")), color = Color.Gray, fontSize = 12.sp)
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Week by week", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { weekStart = weekStart.minusWeeks(1) }) { Text("‹ Previous") }
+                        Text(weekStart.format(DateTimeFormatter.ofPattern("MMM d")) + " – " + weekEnd.format(DateTimeFormatter.ofPattern("MMM d")), fontWeight = FontWeight.SemiBold)
+                        TextButton(onClick = { if (weekStart.plusWeeks(1) <= LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))) weekStart = weekStart.plusWeeks(1) }) { Text("Next ›") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        StatCard("Weekly total", formatDuration(thisWeek.sumOf { it.minutes }), Modifier.weight(1f))
+                        StatCard("Daily average", formatDuration(weekAvg), Modifier.weight(1f))
+                    }
+                    WeeklyBarsForRange(weekStart, thisWeek)
+                    val delta = weekAvg - lastWeekAvg
+                    Text(if (thisWeek.isEmpty()) "No entries recorded for this week." else if (lastWeek.isEmpty()) "Add entries for the previous week to compare." else formatDuration(kotlin.math.abs(delta)) + " " + (if (delta > 0) "higher" else if (delta < 0) "lower" else "the same") + " than the previous week's average per recorded day.", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
+        }
+        item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Analytics", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Monthly detail", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { month = month.minusMonths(1) }) { Text("‹") }
                     Text(month.format(DateTimeFormatter.ofPattern("MMM yyyy")), fontWeight = FontWeight.SemiBold)
@@ -252,24 +332,65 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard("Monthly average", formatDuration(average), Modifier.weight(1f))
-                StatCard("Recorded days", "$daysWithData", Modifier.weight(1f))
+                StatCard("Monthly average", formatDuration(monthAvg), Modifier.weight(1f))
+                StatCard("Recorded days", monthEntries.size.toString(), Modifier.weight(1f))
             }
         }
         item {
-            val delta = average - prevAvg
+            val delta = monthAvg - prevMonthAvg
             Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Compared with previous month", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
-                    Text(if (previousMonth.isEmpty() || thisMonth.isEmpty()) "Add more entries to see a comparison." else "${formatDuration(kotlin.math.abs(delta))} ${if (delta > 0) "higher" else if (delta < 0) "lower" else "the same"} than ${month.minusMonths(1).format(DateTimeFormatter.ofPattern("MMM"))} (average per recorded day).", color = Color.Gray)
+                    Text(if (prevMonth.isEmpty() || monthEntries.isEmpty()) "Add more entries to see a comparison." else formatDuration(kotlin.math.abs(delta)) + " " + (if (delta > 0) "higher" else if (delta < 0) "lower" else "the same") + " than " + month.minusMonths(1).format(DateTimeFormatter.ofPattern("MMM")) + " (average per recorded day).", color = Color.Gray)
                 }
             }
         }
         item { Text("Daily minutes", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
-        item { MonthBars(month, thisMonth) }
+        item { MonthBars(month, monthEntries) }
         item { Text("Monthly calendar", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
-        item { Heatmap(month, thisMonth) }
+        item { Heatmap(month, monthEntries) }
+    }
+}
+
+@Composable
+private fun TrendChart(points: List<Pair<String, Int>>) {
+    val maxValue = max(60, points.maxOfOrNull { it.second } ?: 60).toFloat()
+    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF7F8FC))) {
+        Canvas(Modifier.fillMaxWidth().height(180.dp).padding(8.dp)) {
+            val left = 8.dp.toPx()
+            val right = size.width - 8.dp.toPx()
+            val top = 10.dp.toPx()
+            val bottom = size.height - 10.dp.toPx()
+            repeat(4) { i ->
+                val y = top + (bottom - top) * i / 3f
+                drawLine(Color(0xFFE1E5F0), Offset(left, y), Offset(right, y), strokeWidth = 1.dp.toPx())
+            }
+            if (points.isNotEmpty()) {
+                val step = if (points.size == 1) 0f else (right - left) / (points.size - 1)
+                val coords = points.mapIndexed { index, item -> Offset(left + index * step, bottom - (item.second / maxValue) * (bottom - top)) }
+                coords.zipWithNext().forEach { (a, b) -> drawLine(Color(0xFF536DFE), a, b, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round) }
+                coords.forEach { drawCircle(Color(0xFF536DFE), radius = 3.dp.toPx(), center = it) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeeklyBarsForRange(start: LocalDate, entries: List<DailyEntry>) {
+    val map = entries.associate { LocalDate.parse(it.date) to it.minutes }
+    val days = (0..6).map { start.plusDays(it.toLong()) }
+    val values = days.map { map[it] ?: 0 }
+    val maxVal = max(60, values.maxOrNull() ?: 60)
+    Row(Modifier.fillMaxWidth().height(120.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
+        values.forEachIndexed { index, value ->
+            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+                Text(if (value == 0) "–" else (value / 60).toString() + "h", fontSize = 9.sp, color = Color.Gray)
+                Box(Modifier.padding(top = 4.dp).fillMaxWidth(0.65f).height((if (value == 0) 3f else (value.toFloat() / maxVal * 75f).coerceAtLeast(4f)).dp).background(if (value == 0) Color(0xFFEDEFF5) else Color(0xFF8294FF), RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp)))
+                Spacer(Modifier.height(5.dp))
+                Text(days[index].dayOfWeek.name.take(1), fontSize = 10.sp, color = Color.Gray)
+            }
+        }
     }
 }
 
