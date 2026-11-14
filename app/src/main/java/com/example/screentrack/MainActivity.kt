@@ -524,6 +524,45 @@ private fun EntryDialog(
 }
 
 
+
+private suspend fun importCsv(context: Context, uri: Uri, db: ScreenTimeDatabase): Int {
+    val parsed = mutableListOf<DailyEntry>()
+    context.contentResolver.openInputStream(uri)?.bufferedReader()?.useLines { lines ->
+        lines.drop(1).forEach { line ->
+            val columns = parseCsvLine(line)
+            if (columns.size >= 2) {
+                val date = runCatching { LocalDate.parse(columns[0].trim()) }.getOrNull()
+                val minutes = columns[1].trim().toIntOrNull()
+                if (date != null && minutes != null && minutes in 0..1440) {
+                    parsed.add(DailyEntry(date.toString(), minutes, columns.getOrNull(3) ?: ""))
+                }
+            }
+        }
+    } ?: throw IllegalArgumentException("Could not open the selected CSV file")
+    if (parsed.isEmpty()) throw IllegalArgumentException("No valid entries found. Choose a ScreenTrack CSV export.")
+    db.entries().upsertAll(parsed)
+    return parsed.size
+}
+
+private fun parseCsvLine(line: String): List<String> {
+    val fields = mutableListOf<String>()
+    val field = StringBuilder()
+    var quoted = false
+    var i = 0
+    while (i < line.length) {
+        val c = line[i]
+        when {
+            c == '"' && quoted && i + 1 < line.length && line[i + 1] == '"' -> { field.append('"'); i++ }
+            c == '"' -> quoted = !quoted
+            c == ',' && !quoted -> { fields.add(field.toString()); field.setLength(0) }
+            else -> field.append(c)
+        }
+        i++
+    }
+    fields.add(field.toString())
+    return fields
+}
+
 private fun formatDuration(minutes: Int): String = "${minutes / 60}h ${minutes % 60}m"
 
 private suspend fun exportCsv(context: Context, uri: Uri, entries: List<DailyEntry>) {
