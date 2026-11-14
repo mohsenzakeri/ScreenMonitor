@@ -23,6 +23,9 @@ interface DailyEntryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: DailyEntry)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entries: List<DailyEntry>)
+
     @Query("DELETE FROM daily_entries WHERE date = :date")
     suspend fun delete(date: String)
 }
