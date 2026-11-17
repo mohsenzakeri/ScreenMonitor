@@ -394,11 +394,41 @@ private fun WeeklyBarsForRange(start: LocalDate, entries: List<DailyEntry>) {
     val days = (0..6).map { start.plusDays(it.toLong()) }
     val values = days.map { map[it] ?: 0 }
     val maxVal = max(60, values.maxOrNull() ?: 60)
-    Row(Modifier.fillMaxWidth().height(120.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
+
+    Row(
+        Modifier.fillMaxWidth().height(120.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
         values.forEachIndexed { index, value ->
-            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
-                Text(if (value == 0) "–" else (value / 60).toString() + "h", fontSize = 9.sp, color = Color.Gray)
-                Box(Modifier.padding(top = 4.dp).fillMaxWidth(0.65f).height((if (value == 0) 3f else (value.toFloat() / maxVal * 75f).coerceAtLeast(4f)).dp).background(if (value == 0) Color(0xFFEDEFF5) else Color(0xFF8294FF), RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp)))
+            Column(
+                Modifier.weight(1f).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Keep the value and bar inside a fixed-height chart area. The
+                // weekday label sits outside that area so tall bars cannot push it down.
+                Box(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            if (value == 0) "–" else (value / 60).toString() + "h",
+                            fontSize = 9.sp,
+                            color = Color.Gray
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth(0.65f)
+                                .height((if (value == 0) 3f else (value.toFloat() / maxVal * 75f).coerceAtLeast(4f)).dp)
+                                .background(
+                                    if (value == 0) Color(0xFFEDEFF5) else Color(0xFF8294FF),
+                                    RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp)
+                                )
+                        )
+                    }
+                }
                 Spacer(Modifier.height(5.dp))
                 Text(days[index].dayOfWeek.name.take(1), fontSize = 10.sp, color = Color.Gray)
             }
