@@ -407,7 +407,7 @@ private fun WeekdayAnalysis(parsed: List<Pair<LocalDate, DailyEntry>>) {
                         Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(average?.let { "\${it / 60}h" } ?: "—", fontSize = 9.sp, color = Color.Gray)
+                                    Text(average?.let { "${it / 60}h" } ?: "—", fontSize = 9.sp, color = Color.Gray)
                                     Spacer(Modifier.height(4.dp))
                                     Box(
                                         Modifier.width(18.dp).height((average?.let { (it.toFloat() / maxAverage * 82f).coerceAtLeast(4f) } ?: 2f).dp)
