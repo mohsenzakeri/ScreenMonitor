@@ -333,6 +333,7 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
                 Text("Recorded from " + parsed.first().first.format(DateTimeFormatter.ofPattern("MMM d, yyyy")) + " to " + parsed.last().first.format(DateTimeFormatter.ofPattern("MMM d, yyyy")), color = Color.Gray, fontSize = 12.sp)
             }
         }
+        item { WeekdayAnalysis(parsed) }
         item {
             Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -382,6 +383,52 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
         item { MonthBars(month, monthEntries) }
         item { Text("Monthly calendar", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
         item { Heatmap(month, monthEntries) }
+    }
+}
+
+@Composable
+private fun WeekdayAnalysis(parsed: List<Pair<LocalDate, DailyEntry>>) {
+    val averages = DayOfWeek.values().map { day ->
+        val matching = parsed.filter { it.first.dayOfWeek == day }
+        day to (if (matching.isEmpty()) null else matching.sumOf { it.second.minutes } / matching.size)
+    }
+    val available = averages.mapNotNull { it.second }
+    val maxAverage = max(60, available.maxOrNull() ?: 60)
+    val highest = averages.filter { it.second != null }.maxByOrNull { it.second!! }
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Day-of-week analysis", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Average screen time for each weekday, using only days with recorded entries.", color = Color.Gray, fontSize = 12.sp)
+            if (parsed.isEmpty()) {
+                Text("Add entries to compare weekdays.", color = Color.Gray)
+            } else {
+                Row(Modifier.fillMaxWidth().height(142.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    averages.forEach { (day, average) ->
+                        Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(average?.let { "\${it / 60}h" } ?: "—", fontSize = 9.sp, color = Color.Gray)
+                                    Spacer(Modifier.height(4.dp))
+                                    Box(
+                                        Modifier.width(18.dp).height((average?.let { (it.toFloat() / maxAverage * 82f).coerceAtLeast(4f) } ?: 2f).dp)
+                                            .background(if (highest?.first == day) Color(0xFF536DFE) else Color(0xFFAEBBFF), RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(5.dp))
+                            Text(day.name.take(1), fontSize = 10.sp, color = Color.Gray)
+                        }
+                    }
+                }
+                averages.forEach { (day, average) ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(day.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault()), fontSize = 12.sp)
+                        Text(average?.let { formatDuration(it) } ?: "No data", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF536DFE))
+                    }
+                }
+                Text("Average is calculated per recorded occurrence of each weekday; missing dates are excluded.", color = Color.Gray, fontSize = 11.sp)
+            }
+        }
     }
 }
 
