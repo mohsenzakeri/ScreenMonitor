@@ -367,22 +367,32 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
 
 @Composable
 private fun TrendChart(points: List<Pair<String, Int>>) {
-    val maxValue = max(60, points.maxOfOrNull { it.second } ?: 60).toFloat()
+    val maxValue = max(60, points.maxOfOrNull { it.second } ?: 60)
+    val ticks = (0..3).map { i -> maxValue * (3 - i) / 3 }
     Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF7F8FC))) {
-        Canvas(Modifier.fillMaxWidth().height(180.dp).padding(8.dp)) {
-            val left = 8.dp.toPx()
-            val right = size.width - 8.dp.toPx()
-            val top = 10.dp.toPx()
-            val bottom = size.height - 10.dp.toPx()
-            repeat(4) { i ->
-                val y = top + (bottom - top) * i / 3f
-                drawLine(Color(0xFFE1E5F0), Offset(left, y), Offset(right, y), strokeWidth = 1.dp.toPx())
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier.height(164.dp).width(38.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End
+            ) {
+                ticks.forEach { Text("${it / 60}h", fontSize = 9.sp, color = Color.Gray) }
             }
-            if (points.isNotEmpty()) {
-                val step = if (points.size == 1) 0f else (right - left) / (points.size - 1)
-                val coords = points.mapIndexed { index, item -> Offset(left + index * step, bottom - (item.second / maxValue) * (bottom - top)) }
-                coords.zipWithNext().forEach { (a, b) -> drawLine(Color(0xFF536DFE), a, b, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round) }
-                coords.forEach { drawCircle(Color(0xFF536DFE), radius = 3.dp.toPx(), center = it) }
+            Canvas(Modifier.weight(1f).height(180.dp).padding(start = 6.dp, top = 8.dp, bottom = 8.dp)) {
+                val left = 2.dp.toPx()
+                val right = size.width - 2.dp.toPx()
+                val top = 2.dp.toPx()
+                val bottom = size.height - 2.dp.toPx()
+                repeat(4) { i ->
+                    val y = top + (bottom - top) * i / 3f
+                    drawLine(Color(0xFFE1E5F0), Offset(left, y), Offset(right, y), strokeWidth = 1.dp.toPx())
+                }
+                if (points.isNotEmpty()) {
+                    val step = if (points.size == 1) 0f else (right - left) / (points.size - 1)
+                    val coords = points.mapIndexed { index, item -> Offset(left + index * step, bottom - (item.second.toFloat() / maxValue) * (bottom - top)) }
+                    coords.zipWithNext().forEach { (a, b) -> drawLine(Color(0xFF536DFE), a, b, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round) }
+                    coords.forEach { drawCircle(Color(0xFF536DFE), radius = 3.dp.toPx(), center = it) }
+                }
             }
         }
     }
@@ -394,43 +404,37 @@ private fun WeeklyBarsForRange(start: LocalDate, entries: List<DailyEntry>) {
     val days = (0..6).map { start.plusDays(it.toLong()) }
     val values = days.map { map[it] ?: 0 }
     val maxVal = max(60, values.maxOrNull() ?: 60)
+    val ticks = (0..3).map { i -> maxVal * (3 - i) / 3 }
 
-    Row(
-        Modifier.fillMaxWidth().height(120.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        values.forEachIndexed { index, value ->
-            Column(
-                Modifier.weight(1f).fillMaxHeight(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Keep the value and bar inside a fixed-height chart area. The
-                // weekday label sits outside that area so tall bars cannot push it down.
-                Box(
-                    Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            if (value == 0) "–" else (value / 60).toString() + "h",
-                            fontSize = 9.sp,
-                            color = Color.Gray
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Box(
-                            Modifier
-                                .fillMaxWidth(0.65f)
-                                .height((if (value == 0) 3f else (value.toFloat() / maxVal * 75f).coerceAtLeast(4f)).dp)
-                                .background(
-                                    if (value == 0) Color(0xFFEDEFF5) else Color(0xFF8294FF),
-                                    RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp)
-                                )
-                        )
+    Row(Modifier.fillMaxWidth().height(120.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(
+            Modifier.width(30.dp).height(92.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.End
+        ) {
+            ticks.forEach { Text("${it / 60}h", fontSize = 9.sp, color = Color.Gray) }
+        }
+        Row(
+            Modifier.weight(1f).fillMaxHeight(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            values.forEachIndexed { index, value ->
+                Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(if (value == 0) "–" else (value / 60).toString() + "h", fontSize = 9.sp, color = Color.Gray)
+                            Spacer(Modifier.height(4.dp))
+                            Box(
+                                Modifier.fillMaxWidth(0.65f)
+                                    .height((if (value == 0) 3f else (value.toFloat() / maxVal * 65f).coerceAtLeast(4f)).dp)
+                                    .background(if (value == 0) Color(0xFFEDEFF5) else Color(0xFF8294FF), RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(5.dp))
+                    Text(days[index].dayOfWeek.name.take(1), fontSize = 10.sp, color = Color.Gray)
                 }
-                Spacer(Modifier.height(5.dp))
-                Text(days[index].dayOfWeek.name.take(1), fontSize = 10.sp, color = Color.Gray)
             }
         }
     }
@@ -440,13 +444,31 @@ private fun WeeklyBarsForRange(start: LocalDate, entries: List<DailyEntry>) {
 private fun MonthBars(month: YearMonth, entries: List<DailyEntry>) {
     val map = entries.associate { LocalDate.parse(it.date).dayOfMonth to it.minutes }
     val maxVal = max(60, map.values.maxOrNull() ?: 60)
+    val ticks = (0..3).map { i -> maxVal * (3 - i) / 3 }
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(14.dp)) {
-            Row(Modifier.fillMaxWidth().height(115.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
-                (1..month.lengthOfMonth()).forEach { d ->
-                    val v = map[d] ?: 0
-                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.BottomCenter) {
-                        Box(Modifier.fillMaxWidth().padding(horizontal = 1.dp).height((if (v == 0) 2f else (v.toFloat() / maxVal * 100f).coerceAtLeast(3f)).dp).background(if (v == 0) Color(0xFFEDEFF5) else Color(0xFF8294FF), RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)))
+            Row(Modifier.fillMaxWidth().height(115.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(
+                    Modifier.width(30.dp).fillMaxHeight(),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.End
+                ) {
+                    ticks.forEach { Text("${it / 60}h", fontSize = 9.sp, color = Color.Gray) }
+                }
+                Row(
+                    Modifier.weight(1f).fillMaxHeight(),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    (1..month.lengthOfMonth()).forEach { d ->
+                        val v = map[d] ?: 0
+                        Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.BottomCenter) {
+                            Box(
+                                Modifier.fillMaxWidth().padding(horizontal = 1.dp)
+                                    .height((if (v == 0) 2f else (v.toFloat() / maxVal * 100f).coerceAtLeast(3f)).dp)
+                                    .background(if (v == 0) Color(0xFFEDEFF5) else Color(0xFF8294FF), RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                            )
+                        }
                     }
                 }
             }
