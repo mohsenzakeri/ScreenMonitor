@@ -153,22 +153,22 @@ private fun ScreenTrackApp(context: Context, db: ScreenTimeDatabase) {
 
 @Composable
 private fun HomeScreen(entries: List<DailyEntry>, modifier: Modifier = Modifier, onAdd: (LocalDate) -> Unit) {
-    val today = LocalDate.now()
-    val todayEntry = entries.firstOrNull { it.date == today.toString() }
-    val weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    val weekEntries = entries.filter { runCatching { LocalDate.parse(it.date) }.getOrNull() in weekStart..today }
+    val yesterday = LocalDate.now().minusDays(1)
+    val yesterdayEntry = entries.firstOrNull { it.date == yesterday.toString() }
+    val sevenDayStart = yesterday.minusDays(6)
+    val weekEntries = entries.filter { runCatching { LocalDate.parse(it.date) }.getOrNull() in sevenDayStart..yesterday }
     val average = if (weekEntries.isEmpty()) 0 else weekEntries.sumOf { it.minutes } / weekEntries.size
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF202B52))) {
                 Column(Modifier.fillMaxWidth().padding(20.dp)) {
-                    Text("TODAY", color = Color(0xFFB9C5F5), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("YESTERDAY", color = Color(0xFFB9C5F5), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
-                    Text(todayEntry?.let { formatDuration(it.minutes) } ?: "Not entered yet", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                    Text(if (todayEntry == null) "Add today's screen time to get started" else "Your daily screen-time total", color = Color(0xFFD8DDF2))
+                    Text(yesterdayEntry?.let { formatDuration(it.minutes) } ?: "Not entered yet", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    Text(if (yesterdayEntry == null) "Add yesterday's screen time to get started" else "Your screen-time total for yesterday", color = Color(0xFFD8DDF2))
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = { onAdd(today) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7D91FF))) {
-                        Text(if (todayEntry == null) "Add today's entry" else "Edit today's entry")
+                    Button(onClick = { onAdd(yesterday) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7D91FF))) {
+                        Text(if (yesterdayEntry == null) "Add yesterday's entry" else "Edit yesterday's entry")
                     }
                 }
             }
@@ -184,7 +184,7 @@ private fun HomeScreen(entries: List<DailyEntry>, modifier: Modifier = Modifier,
         item {
             Text("Quick entry", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                (0..6).map { today.minusDays((6 - it).toLong()) }.forEach { day ->
+                (0..6).map { yesterday.minusDays((6 - it).toLong()) }.forEach { day ->
                     val exists = entries.any { it.date == day.toString() }
                     Surface(
                         modifier = Modifier.weight(1f).clickable { onAdd(day) },
@@ -216,8 +216,8 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
 
 @Composable
 private fun WeeklyBars(entries: List<DailyEntry>) {
-    val today = LocalDate.now()
-    val days = (6 downTo 0).map { today.minusDays(it.toLong()) }
+    val yesterday = LocalDate.now().minusDays(1)
+    val days = (6 downTo 0).map { yesterday.minusDays(it.toLong()) }
     val values = days.map { d -> entries.firstOrNull { it.date == d.toString() }?.minutes ?: 0 }
     val maxVal = max(60, values.maxOrNull() ?: 60)
     Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
