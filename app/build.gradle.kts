@@ -5,6 +5,8 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val signingStorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+
 android {
     namespace = "com.example.screentrack"
     compileSdk = 35
@@ -15,6 +17,25 @@ android {
         targetSdk = 35
         versionCode = 3
         versionName = "1.2"
+    }
+
+    signingConfigs {
+        if (!signingStorePath.isNullOrBlank()) {
+            create("persistentDebug") {
+                storeFile = file(signingStorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            if (!signingStorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("persistentDebug")
+            }
+        }
     }
 
     buildFeatures { compose = true }
