@@ -137,9 +137,9 @@ private fun ScreenTrackApp(context: Context, db: ScreenTimeDatabase) {
                 date = editDate,
                 existing = entries.firstOrNull { it.date == editDate.toString() },
                 onDismiss = { showEditor = false },
-                onSave = { selectedDate, minutes, note ->
+                onSave = { selectedDate, minutes, mood, note ->
                     scope.launch {
-                        db.entries().upsert(DailyEntry(selectedDate.toString(), minutes, note))
+                        db.entries().upsert(DailyEntry(selectedDate.toString(), minutes, note, mood))
                         showEditor = false
                     }
                 },
@@ -334,6 +334,7 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
             }
         }
         item { WeekdayAnalysis(parsed) }
+        item { MoodCorrelation(parsed) }
         item {
             Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -383,6 +384,59 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
         item { MonthBars(month, monthEntries) }
         item { Text("Monthly calendar", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
         item { Heatmap(month, monthEntries) }
+    }
+}
+
+@Composable
+private fun MoodCorrelation(parsed: List<Pair<LocalDate, DailyEntry>>) {
+    val points = parsed.map { it.second }.filter { it.mood != null }.map { it.minutes.toDouble() to it.mood!!.toDouble() }
+    val r = pearsonCorrelation(points)
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Mood vs. screen time", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Each point represents one day with both values recorded.", color = Color.Gray, fontSize = 12.sp)
+            if (points.size < 3) Text("Record mood for at least 3 days to begin. You have ${points.size} paired days.", color = Color.Gray, fontSize = 13.sp)
+            else if (r == null) Text("Not enough variation in the recorded values to calculate a correlation yet.", color = Color.Gray, fontSize = 13.sp)
+            else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column { Text("Pearson correlation", color = Color.Gray, fontSize = 11.sp); Text("%+.2f".format(java.util.Locale.US, r), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF536DFE)) }
+                    Text("${points.size} paired days", color = Color.Gray, fontSize = 12.sp)
+                }
+                MoodScatterPlot(points)
+                Text(when { r <= -0.6 -> "Strong negative association."; r <= -0.2 -> "Moderate negative association."; r < 0.2 -> "Little linear association in the current entries."; r < 0.6 -> "Moderate positive association."; else -> "Strong positive association." }, color = Color.Gray, fontSize = 12.sp)
+            }
+            Text("Correlation shows association, not cause and effect. More recorded days can make the pattern easier to interpret.", color = Color.Gray, fontSize = 11.sp)
+        }
+    }
+}
+private fun pearsonCorrelation(points: List<Pair<Double, Double>>): Double? {
+    if (points.size < 2) return null
+    val mx = points.map { it.first }.average(); val my = points.map { it.second }.average()
+    val num = points.sumOf { (x, y) -> (x - mx) * (y - my) }
+    val sx = points.sumOf { (x, _) -> (x - mx) * (x - mx) }; val sy = points.sumOf { (_, y) -> (y - my) * (y - my) }
+    val den = kotlin.math.sqrt(sx * sy)
+    return if (den == 0.0) null else (num / den).coerceIn(-1.0, 1.0)
+}
+@Composable
+private fun MoodScatterPlot(points: List<Pair<Double, Double>>) {
+    val minX = points.minOf { it.first }; val maxX = points.maxOf { it.first }
+    val mx = points.map { it.first }.average(); val my = points.map { it.second }.average()
+    val vx = points.sumOf { (x, _) -> (x - mx) * (x - mx) }
+    val slope = if (vx == 0.0) 0.0 else points.sumOf { (x, y) -> (x - mx) * (y - my) } / vx
+    val intercept = my - slope * mx
+    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF7F8FC))) {
+        Column(Modifier.fillMaxWidth().padding(10.dp)) {
+            Canvas(Modifier.fillMaxWidth().height(160.dp)) {
+                val l = 10.dp.toPx(); val rr = size.width - 8.dp.toPx(); val t = 8.dp.toPx(); val b = size.height - 8.dp.toPx()
+                fun xp(x: Double) = l + ((x - minX) / (maxX - minX).coerceAtLeast(1.0)).toFloat() * (rr - l)
+                fun yp(y: Double) = b - ((y - 1.0) / 4.0).toFloat() * (b - t)
+                repeat(5) { i -> val y = t + (b - t) * i / 4f; drawLine(Color(0xFFE1E5F0), Offset(l, y), Offset(rr, y), strokeWidth = 1.dp.toPx()) }
+                drawLine(Color(0xFF536DFE), Offset(xp(minX), yp((intercept + slope * minX).coerceIn(1.0, 5.0))), Offset(xp(maxX), yp((intercept + slope * maxX).coerceIn(1.0, 5.0))), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                points.forEach { (x, y) -> drawCircle(Color(0xFF536DFE), radius = 4.dp.toPx(), center = Offset(xp(x), yp(y))) }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Less screen time", fontSize = 10.sp, color = Color.Gray); Text("More screen time", fontSize = 10.sp, color = Color.Gray) }
+            Text("Mood score: 1 😞 to 5 😄", fontSize = 10.sp, color = Color.Gray)
+        }
     }
 }
 
@@ -584,7 +638,7 @@ private fun HistoryScreen(entries: List<DailyEntry>, modifier: Modifier = Modifi
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(date.format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")), fontWeight = FontWeight.SemiBold)
-                        if (entry.note.isNotBlank()) Text(entry.note, color = Color.Gray, fontSize = 12.sp)
+                        Text((entry.mood?.let { moodEmoji(it) + "  " + moodLabel(it) } ?: "Mood not recorded") + (if (entry.note.isNotBlank()) " · " + entry.note else ""), color = Color.Gray, fontSize = 12.sp)
                     }
                     Text(formatDuration(entry.minutes), fontWeight = FontWeight.Bold, color = Color(0xFF536DFE))
                     Spacer(Modifier.width(8.dp))
@@ -595,18 +649,33 @@ private fun HistoryScreen(entries: List<DailyEntry>, modifier: Modifier = Modifi
     }
 }
 
+private fun moodEmoji(mood: Int): String = when (mood) { 1 -> "😞"; 2 -> "🙁"; 3 -> "😐"; 4 -> "🙂"; else -> "😄" }
+private fun moodLabel(mood: Int): String = when (mood) { 1 -> "Very bad"; 2 -> "Bad"; 3 -> "Okay"; 4 -> "Good"; else -> "Very good" }
+@Composable
+private fun MoodSelector(selectedMood: Int?, onSelect: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        (1..5).forEach { value ->
+            Surface(Modifier.weight(1f).clickable { onSelect(value) }, shape = RoundedCornerShape(12.dp), color = if (selectedMood == value) Color(0xFFE4E9FF) else Color(0xFFF7F8FC), border = if (selectedMood == value) androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF536DFE)) else null) {
+                Column(Modifier.padding(vertical = 9.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(moodEmoji(value), fontSize = 23.sp); Text(value.toString(), fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+    Text(selectedMood?.let { moodLabel(it) } ?: "Select one face (1 = very bad, 5 = very good)", fontSize = 11.sp, color = Color.Gray)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EntryDialog(
     date: LocalDate,
     existing: DailyEntry?,
     onDismiss: () -> Unit,
-    onSave: (LocalDate, Int, String) -> Unit,
+    onSave: (LocalDate, Int, Int, String) -> Unit,
     onDelete: () -> Unit
 ) {
     var dateText by remember(date) { mutableStateOf(date.toString()) }
     var minutesText by remember(date, existing) { mutableStateOf(existing?.minutes?.toString() ?: "") }
     var note by remember(date, existing) { mutableStateOf(existing?.note ?: "") }
+    var mood by remember(date, existing) { mutableStateOf(existing?.mood) }
     var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -616,6 +685,8 @@ private fun EntryDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Date (YYYY-MM-DD)", fontSize = 12.sp, color = Color.Gray)
                 OutlinedTextField(value = dateText, onValueChange = { dateText = it }, singleLine = true)
+                Text("How was your mood today?", fontSize = 12.sp, color = Color.Gray)
+                MoodSelector(selectedMood = mood, onSelect = { mood = it })
                 Text("Total screen time in minutes", fontSize = 12.sp, color = Color.Gray)
                 OutlinedTextField(value = minutesText, onValueChange = { minutesText = it.filter(Char::isDigit) }, singleLine = true, placeholder = { Text("e.g. 272") })
                 OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("Note (optional)") }, minLines = 2)
@@ -629,7 +700,8 @@ private fun EntryDialog(
                 when {
                     parsedDate == null -> error = "Enter a valid date in YYYY-MM-DD format."
                     minutes == null || minutes < 0 || minutes > 1440 -> error = "Enter minutes between 0 and 1440."
-                    else -> onSave(parsedDate, minutes, note)
+                    mood == null -> error = "Choose a mood from 1 to 5."
+                    else -> onSave(parsedDate, minutes, mood!!, note)
                 }
             }) { Text("Save") }
         },
@@ -653,7 +725,8 @@ private suspend fun importCsv(context: Context, uri: Uri, db: ScreenTimeDatabase
                 val date = runCatching { LocalDate.parse(columns[0].trim()) }.getOrNull()
                 val minutes = columns[1].trim().toIntOrNull()
                 if (date != null && minutes != null && minutes in 0..1440) {
-                    parsed.add(DailyEntry(date.toString(), minutes, columns.getOrNull(3) ?: ""))
+                    val mood = columns.getOrNull(4)?.trim()?.toIntOrNull()?.takeIf { it in 1..5 }
+                    parsed.add(DailyEntry(date.toString(), minutes, columns.getOrNull(3) ?: "", mood))
                 }
             }
         }
