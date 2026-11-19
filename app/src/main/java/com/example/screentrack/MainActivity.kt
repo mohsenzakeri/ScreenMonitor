@@ -759,10 +759,10 @@ private fun formatDuration(minutes: Int): String = "${minutes / 60}h ${minutes %
 
 private suspend fun exportCsv(context: Context, uri: Uri, entries: List<DailyEntry>) {
     context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-        writer.appendLine("date,minutes,hours,note")
+        writer.appendLine("date,minutes,hours,note,mood")
         entries.sortedBy { it.date }.forEach { entry ->
             val escaped = entry.note.replace("\"", "\"\"")
-            writer.appendLine("\"${entry.date}\",${entry.minutes},${"%.2f".format(java.util.Locale.US, entry.minutes / 60.0)},\"$escaped\"")
+            writer.appendLine("\"${entry.date}\",${entry.minutes},${"%.2f".format(java.util.Locale.US, entry.minutes / 60.0)},\"$escaped\",${entry.mood ?: ""}")
         }
     }
 }
