@@ -9,7 +9,8 @@ import java.time.LocalDate
 data class DailyEntry(
     @PrimaryKey val date: String,
     val minutes: Int,
-    val note: String = ""
+    val note: String = "",
+    val mood: Int? = null
 )
 
 @Dao
@@ -30,11 +31,17 @@ interface DailyEntryDao {
     suspend fun delete(date: String)
 }
 
-@Database(entities = [DailyEntry::class], version = 1, exportSchema = false)
+@Database(entities = [DailyEntry::class], version = 2, exportSchema = false)
 abstract class ScreenTimeDatabase : RoomDatabase() {
     abstract fun entries(): DailyEntryDao
 
     companion object {
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE daily_entries ADD COLUMN mood INTEGER")
+            }
+        }
+
         @Volatile private var INSTANCE: ScreenTimeDatabase? = null
         fun get(context: Context): ScreenTimeDatabase =
             INSTANCE ?: synchronized(this) {
@@ -42,7 +49,7 @@ abstract class ScreenTimeDatabase : RoomDatabase() {
                     context.applicationContext,
                     ScreenTimeDatabase::class.java,
                     "screentrack.db"
-                ).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2).build().also { INSTANCE = it }
             }
     }
 }
