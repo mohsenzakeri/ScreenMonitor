@@ -312,6 +312,7 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
                 }
             }
         }
+        item { AllTimeDailyAverageChart(parsed) }
         item {
             Text("All-time overview", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -476,6 +477,65 @@ private fun WeekdayAnalysis(parsed: List<Pair<LocalDate, DailyEntry>>) {
                     }
                 }
                 Text("Average is calculated per recorded occurrence of each weekday; missing dates are excluded.", color = Color.Gray, fontSize = 11.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AllTimeDailyAverageChart(parsed: List<Pair<LocalDate, DailyEntry>>) {
+    val sorted = parsed.sortedBy { it.first }
+    var runningTotal = 0L
+    val cumulative = sorted.mapIndexed { index, (date, entry) ->
+        runningTotal += entry.minutes
+        date to (runningTotal.toDouble() / (index + 1))
+    }
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("All-time daily average", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Cumulative average screen time per recorded day, from your first entry through each date.", color = Color.Gray, fontSize = 12.sp)
+            if (cumulative.isEmpty()) {
+                Text("Add entries to see how your daily average changes over time.", color = Color.Gray)
+            } else {
+                val maxValue = kotlin.math.max(60.0, cumulative.maxOf { it.second })
+                val minDay = cumulative.first().first.toEpochDay()
+                val maxDay = cumulative.last().first.toEpochDay()
+                val span = (maxDay - minDay).coerceAtLeast(1L).toFloat()
+                Text("Current average: " + formatDuration((runningTotal / cumulative.size).toInt()), fontWeight = FontWeight.SemiBold, color = Color(0xFF536DFE))
+                Text("Average daily screen time (hours/day)", fontSize = 11.sp, color = Color.Gray)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.height(160.dp).width(42.dp), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) {
+                        (0..4).forEach { i ->
+                            Text("%.1fh".format(java.util.Locale.US, maxValue * (4 - i) / 4 / 60.0), fontSize = 9.sp, color = Color.Gray)
+                        }
+                    }
+                    Canvas(Modifier.weight(1f).height(168.dp).padding(start = 6.dp, top = 4.dp, bottom = 4.dp)) {
+                        val left = 3.dp.toPx()
+                        val right = size.width - 4.dp.toPx()
+                        val top = 2.dp.toPx()
+                        val bottom = size.height - 2.dp.toPx()
+                        repeat(5) { i ->
+                            val y = top + (bottom - top) * i / 4f
+                            drawLine(Color(0xFFE1E5F0), Offset(left, y), Offset(right, y), strokeWidth = 1.dp.toPx())
+                        }
+                        val coords = cumulative.map { (date, avg) ->
+                            Offset(
+                                left + (date.toEpochDay() - minDay).toFloat() / span * (right - left),
+                                bottom - (avg / maxValue).toFloat() * (bottom - top)
+                            )
+                        }
+                        coords.zipWithNext().forEach { (a, b) ->
+                            drawLine(Color(0xFF536DFE), a, b, strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                        }
+                        coords.forEach { drawCircle(Color(0xFF536DFE), radius = 2.5.dp.toPx(), center = it) }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(start = 46.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(cumulative.first().first.format(DateTimeFormatter.ofPattern("MMM d, yy")), fontSize = 10.sp, color = Color.Gray)
+                    Text(cumulative.last().first.format(DateTimeFormatter.ofPattern("MMM d, yy")), fontSize = 10.sp, color = Color.Gray)
+                }
+                Text("Date", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontSize = 11.sp, color = Color.Gray)
+                Text("Only recorded days contribute to the average. Missing dates are excluded.", fontSize = 11.sp, color = Color.Gray)
             }
         }
     }
