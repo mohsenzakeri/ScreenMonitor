@@ -275,9 +275,9 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
         when (resolution) {
             "Day" -> parsed.map { Pair(it.first.format(DateTimeFormatter.ofPattern("MMM d")), it.second.minutes) }
             "Week" -> parsed.groupBy { it.first.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) }.toSortedMap()
-                .map { (d, list) -> Pair(d.format(DateTimeFormatter.ofPattern("MMM d")), list.sumOf { it.second.minutes }) }
+                .map { (d, list) -> Pair(d.format(DateTimeFormatter.ofPattern("MMM d")), list.sumOf { it.second.minutes } / list.size) }
             else -> parsed.groupBy { YearMonth.from(it.first) }.toSortedMap()
-                .map { (m, list) -> Pair(m.format(DateTimeFormatter.ofPattern("MMM yy")), list.sumOf { it.second.minutes }) }
+                .map { (m, list) -> Pair(m.format(DateTimeFormatter.ofPattern("MMM yy")), list.sumOf { it.second.minutes } / list.size) }
         }
     }
     val monthEntries = parsed.filter { YearMonth.from(it.first) == month }.map { it.second }
@@ -312,7 +312,7 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
                             Text(trend.size.toString() + " " + resolution.lowercase() + " periods", color = Color.Gray, fontSize = 10.sp)
                             Text(trend.last().first, color = Color.Gray, fontSize = 10.sp)
                         }
-                        Text("All available history is included. Each bar represents total minutes per " + resolution.lowercase() + ".", color = Color.Gray, fontSize = 11.sp)
+                        Text("All available history is included. Each point represents average screen time per recorded day in the selected " + resolution.lowercase() + " period; missing dates are excluded.", color = Color.Gray, fontSize = 11.sp)
                     }
                 }
             }
