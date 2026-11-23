@@ -273,11 +273,11 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
     val highest = parsed.maxByOrNull { it.second.minutes }
     val trend = remember(parsed, resolution) {
         when (resolution) {
-            "Day" -> parsed.map { Pair(it.first.format(DateTimeFormatter.ofPattern("MMM d")), it.second.minutes) }
+            "Day" -> parsed.map { it.first to it.second.minutes }
             "Week" -> parsed.groupBy { it.first.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) }.toSortedMap()
-                .map { (d, list) -> Pair(d.format(DateTimeFormatter.ofPattern("MMM d")), list.sumOf { it.second.minutes } / list.size) }
+                .map { (d, list) -> d to (list.sumOf { it.second.minutes } / list.size) }
             else -> parsed.groupBy { YearMonth.from(it.first) }.toSortedMap()
-                .map { (m, list) -> Pair(m.format(DateTimeFormatter.ofPattern("MMM yy")), list.sumOf { it.second.minutes } / list.size) }
+                .map { (m, list) -> m.atDay(1) to (list.sumOf { it.second.minutes } / list.size) }
         }
     }
     val monthEntries = parsed.filter { YearMonth.from(it.first) == month }.map { it.second }
@@ -306,12 +306,7 @@ private fun AnalyticsScreen(entries: List<DailyEntry>, modifier: Modifier = Modi
                     }
                     if (trend.isEmpty()) Text("Add entries to see your trend.", color = Color.Gray)
                     else {
-                        TrendChart(trend)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(trend.first().first, color = Color.Gray, fontSize = 10.sp)
-                            Text(trend.size.toString() + " " + resolution.lowercase() + " periods", color = Color.Gray, fontSize = 10.sp)
-                            Text(trend.last().first, color = Color.Gray, fontSize = 10.sp)
-                        }
+                        TrendChart(trend, resolution)
                         Text("All available history is included. Each point represents average screen time per recorded day in the selected " + resolution.lowercase() + " period; missing dates are excluded.", color = Color.Gray, fontSize = 11.sp)
                     }
                 }
@@ -487,34 +482,55 @@ private fun WeekdayAnalysis(parsed: List<Pair<LocalDate, DailyEntry>>) {
 }
 
 @Composable
-private fun TrendChart(points: List<Pair<String, Int>>) {
+private fun TrendChart(points: List<Pair<LocalDate, Int>>, resolution: String) {
     val maxValue = max(60, points.maxOfOrNull { it.second } ?: 60)
-    val ticks = (0..3).map { i -> maxValue * (3 - i) / 3 }
+    val firstDay = points.first().first.toEpochDay()
+    val lastDay = points.last().first.toEpochDay()
+    val dateSpan = (lastDay - firstDay).coerceAtLeast(1L).toFloat()
+    val dateFormat = DateTimeFormatter.ofPattern(if (resolution == "Month") "MMM yy" else "MMM d")
+    val tickIndices = if (points.size == 1) listOf(0) else (0..4).map { i -> i * (points.size - 1) / 4 }.distinct()
     Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF7F8FC))) {
-        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(
-                Modifier.height(164.dp).width(38.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-                horizontalAlignment = Alignment.End
-            ) {
-                ticks.forEach { Text("${it / 60}h", fontSize = 9.sp, color = Color.Gray) }
-            }
-            Canvas(Modifier.weight(1f).height(180.dp).padding(start = 6.dp, top = 8.dp, bottom = 8.dp)) {
-                val left = 2.dp.toPx()
-                val right = size.width - 2.dp.toPx()
-                val top = 2.dp.toPx()
-                val bottom = size.height - 2.dp.toPx()
-                repeat(4) { i ->
-                    val y = top + (bottom - top) * i / 3f
-                    drawLine(Color(0xFFE1E5F0), Offset(left, y), Offset(right, y), strokeWidth = 1.dp.toPx())
+        Column(Modifier.fillMaxWidth().padding(10.dp)) {
+            Text("Average daily screen time (hours/day)", fontSize = 11.sp, color = Color.Gray)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    Modifier.height(166.dp).width(39.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.End
+                ) {
+                    (0..4).forEach { i ->
+                        val minutes = maxValue * (4 - i) / 4
+                        Text("%.1fh".format(java.util.Locale.US, minutes / 60.0), fontSize = 9.sp, color = Color.Gray)
+                    }
                 }
-                if (points.isNotEmpty()) {
-                    val step = if (points.size == 1) 0f else (right - left) / (points.size - 1)
-                    val coords = points.mapIndexed { index, item -> Offset(left + index * step, bottom - (item.second.toFloat() / maxValue) * (bottom - top)) }
-                    coords.zipWithNext().forEach { (a, b) -> drawLine(Color(0xFF536DFE), a, b, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round) }
+                Canvas(Modifier.weight(1f).height(174.dp).padding(start = 6.dp, top = 4.dp, bottom = 4.dp)) {
+                    val left = 4.dp.toPx()
+                    val right = size.width - 5.dp.toPx()
+                    val top = 2.dp.toPx()
+                    val bottom = size.height - 2.dp.toPx()
+                    repeat(5) { i ->
+                        val y = top + (bottom - top) * i / 4f
+                        drawLine(Color(0xFFE1E5F0), Offset(left, y), Offset(right, y), strokeWidth = 1.dp.toPx())
+                    }
+                    val coords = points.map { (date, minutes) ->
+                        val x = left + ((date.toEpochDay() - firstDay).toFloat() / dateSpan) * (right - left)
+                        val y = bottom - (minutes.toFloat() / maxValue) * (bottom - top)
+                        Offset(x, y)
+                    }
+                    coords.zipWithNext().forEach { (a, b) ->
+                        drawLine(Color(0xFF536DFE), a, b, strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                    }
                     coords.forEach { drawCircle(Color(0xFF536DFE), radius = 3.dp.toPx(), center = it) }
                 }
             }
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth().padding(start = 45.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                tickIndices.forEach { i ->
+                    Text(points[i].first.format(dateFormat), fontSize = 9.sp, color = Color.Gray)
+                }
+            }
+            Text("Date", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontSize = 11.sp, color = Color.Gray)
         }
     }
 }
